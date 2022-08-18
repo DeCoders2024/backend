@@ -3,14 +3,24 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const logger = require('morgan');
 const cors=require("cors")
-const dotenv=require("dotenv")
+// const dotenv=require("dotenv")
+const bodyparser = require('body-parser');
 const app = express();
-dotenv.config({path:"./bin/config.env"})
-app.use(cors())
+// dotenv.config({path:"./bin/config.env"})
+const corsOptions = {
+  //To allow requests from client
+  origin: [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+  ],
+  credentials: true,
+  exposedHeaders: ["set-cookie"],
+};
 app.use(logger('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
+app.use(cors())
 
 // Require App
 

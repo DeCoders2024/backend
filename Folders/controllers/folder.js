@@ -42,6 +42,8 @@ const addFile=async(req,res,next)=>{
     try{
         let {_id}=req.params;
         let {folder_parent,filename}=req.body;
+      console.log(folder_parent)
+      console.log(filename)
         if(folder_parent===undefined){
             folder_parent=null;
         }
@@ -71,7 +73,7 @@ const addFile=async(req,res,next)=>{
     }
     catch(e){
         console.log(e)
-        error(res,500,"Server Error....")   
+        error(res,500,"Invalid Parent Folder")   
     }
 }
 
@@ -119,16 +121,23 @@ const updateFolder=async(req,res,next)=>{
         if(!folder){
             return res.status(401).json({"status":false,error:"Invalid Folder"})
         }
-        // console.log(folder_parent)
-        // console.log(String(folder_parent)!==String(folder.folder_parent) ,folder_parent!==undefined)
-        if(folder_parent!==undefined){
+        if(folder_parent==="null"){
+          folder_parent=null;
+        }
+        if(folder_parent!==undefined && String(folder_parent)!==String(folder.folder_parent)){
         let parent=await folderModel.findOne({_id:folder_parent,user_id:_id})
         if(!parent && folder_parent!==null){
             return res.status(401).json({"status":false,error:"Parent Folder Not Exist"})
         }
+          else if(folder_parent==null){
+            folder.folder_parent=folder_parent
+          }
         else if(folder_parent && String(parent._id)===String(folder._id)){
             return res.status(400).json({"status":false,error:"Move Command Fail To Do this"})
         }
+        
+          else{
+            
         let duplicate=await folderModel.findOne({folder_parent,user_id:_id,folder_type:folder.folder_type,folder_name:folder_name?folder_name:folder.folder_name})
         if(duplicate){
             return res.status(400).json({status:false,error:"Duplicate Folder Create"})
@@ -140,6 +149,7 @@ const updateFolder=async(req,res,next)=>{
             return error(res,400,"The Destination Folder Is Sub Folder of source folder")
         }}
         folder.folder_parent=folder_parent;
+          }
     }
         if(folder_name){
             folder_name=String(folder_name)
@@ -148,7 +158,7 @@ const updateFolder=async(req,res,next)=>{
             }
             folder.folder_name=folder_name
         }
-        if(folder_logo){
+        if(folder_logo || folder_logo===""){
             if(String(folder.folder_logo).startsWith(process.env.BACKEND_URL)){
                 let fd=String(folder.folder_logo).split("/")
                 removeFile(`user_images/${fd[fd.length-1]}`)
@@ -272,12 +282,13 @@ const removeAccess=async(req,res,next)=>{
 }
 
 const findUsingPath=async(req,res,next)=>{
+      var dirs=[{"folder_name":"root:",_id:null}]
     try{
         let dir_path=req.query.path;
         let {_id}=req.params;
         dir_path=String(dir_path).split("/")
         if(dir_path.length===0 || dir_path[0]!=="root:"){
-            return res.status(400).json({"status":false,error:"Invalid Directory Path"})
+            return res.status(400).json({"status":false,error:"Invalid Directory Path",dirs})
         }
         else{
             var folder_parent=null;
@@ -289,26 +300,29 @@ const findUsingPath=async(req,res,next)=>{
                 else{
                     let folder=await folderModel.findOne({user_id:_id,folder_name})
                     if(!folder){
-                        return res.status(400).json({status:false,error:"Invalid Directory Enter"})
+                        let folders=await folderModel.find({folder_parent,user_id:_id});
+                        return res.status(400).json({status:false,error:"Invalid Directory Enter",dirs,folders})
                     }
                     if(folder.folder_type===0){
                         if(i===dir_path.length-1){
-                            return res.status(200).json({status:true,folder:[folder]})
+                            return res.status(200).json({status:true,folders:[folder],dirs})
                         }
                         else{
-                            return res.status(400).json({status:false,error:"Invalid Directory Enter"})
+                          let folders=await folderModel.find({folder_parent,user_id:_id});
+                            return res.status(400).json({status:false,error:"Invalid Directory Enter",dirs,folders})
                         }
                     }
                     folder_parent=folder._id;
+                    dirs.push({folder_name,_id:folder._id})
                 }
             }
         }
         let folders=await folderModel.find({folder_parent,user_id:_id});
-        return res.status(200).json({status:true,folders})
+        return res.status(200).json({status:true,folders,dirs})
     }
     catch(e){
         console.log(e)
-        error(res,500,"Server Error....")
+        return res.status(500).json({status:false,error:"Server Error...",dirs})
     }
 }
 
@@ -341,4 +355,50 @@ const deleteFolder=async(req,res,next)=>{
         error(res,500,"Server Error....")
     }
 }
-module.exports={createFolder,getAllFolders,addFile,findUsingPath,updateFolder,updateFolderLogo,addPersonToAccess,removeAccess,deleteFolder}
+
+const getLogo=async(req,res,next)=>{
+    try{
+        let {_id,folder_access_url}=req.params;
+        let url=`${process.env.BACKEND_URL}${req.url}`;
+        let ind=url.lastIndexOf("?")
+        url=url.substring(0,ind)
+        var query={user_id:_id,folder_logo:url}
+
+        let folder=await folderModel.findOne(query)
+        var filename="user_files/!pka!95tw@.png"
+        if(!folder){
+          return res.sendFile(`${root_dir}/Files/${filename}`)
+        }
+        else{
+          return res.sendFile(`${root_dir}/Files/user_images/${folder_access_url}`)
+        }
+    }
+  catch(e){
+    console.log(e)
+     return res.sendFile(`${root_dir}/Files/user_files/!pka!95tw@.png`)
+  }
+}
+
+const getFolder=async(req,res,next)=>{
+    try{
+        let {_id,folder_access_url}=req.params;
+        
+        var query={user_id:_id,folder_access_link:folder_access_url}
+
+        let folder=await folderModel.findOne(query)
+        var filename="user_files/!pka!95tw@.png"
+        // console.log(folder)
+        if(!folder){
+          return res.sendFile(`${root_dir}/Files/${filename}`)
+        }
+        else{
+          return res.download(`${root_dir}/Files/user_files/${folder.folder_server_name}`)
+        }
+    }
+  catch(e){
+    console.log(e)
+     return res.sendFile(`${root_dir}/Files/user_files/!pka!95tw@.png`)
+  }
+}
+
+module.exports={getLogo,getFolder,createFolder,getAllFolders,addFile,findUsingPath,updateFolder,updateFolderLogo,addPersonToAccess,removeAccess,deleteFolder}

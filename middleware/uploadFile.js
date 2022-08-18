@@ -1,5 +1,7 @@
 var multer=require('multer');
+const util=require("util")
 var uid=require('generate-unique-id')
+
 const UploadFile=(file_path,filepath,isMultiple)=>{
     var des=multer.diskStorage({
         destination:(req,file,path)=>{
@@ -9,7 +11,7 @@ const UploadFile=(file_path,filepath,isMultiple)=>{
             
                 var id=uid({
                     length:10,
-                    includeSymbols:['@','$','!','^','&']
+                    includeSymbols:['@','$','!','&']
                 })
             path(null,(id+"."+file.originalname.split('.')[1]));}
     })
@@ -17,12 +19,12 @@ const UploadFile=(file_path,filepath,isMultiple)=>{
 const upload=multer({storage:des});
 if(isMultiple){
     return (
-        upload.any(filepath)
+        util.promisify(upload.any(filepath))
     )
 }
 else{
     return (
-        upload.single(filepath)
+        util.promisify(upload.single(filepath))
     )
 }
 }
