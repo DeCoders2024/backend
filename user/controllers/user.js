@@ -1,5 +1,7 @@
 const userModel=require("../model/user")
-
+const path=require("path")
+const root_dir=path.dirname(path.dirname(__dirname))
+const removeFile=require(`${root_dir}/middleware/removeFile`)
 const AddUser=async(req,res,next)=>{
     try{
         let {emailid,name,password}=req.body;
@@ -47,7 +49,7 @@ const updateProfile=async(req,res,next)=>{
             let fd=String(user.profile_pic).split("/")
             removeFile(`user_images/${fd[fd.length-1]}`)
         }
-        user.profile_pic=`${process.env.BACKEND_URL}/accessFile/${filename}`;
+        user.profile_pic=`${process.env.BACKEND_URL}/user/accessFile/${filename}`;
         await user.save()
         return res.status(200).json({status:true})
     }
@@ -68,7 +70,7 @@ const updateUser=async(req,res,next)=>{
                 let fd=String(user.profile_pic).split("/")
                 removeFile(`user_images/${fd[fd.length-1]}`)
             }
-            user.profile_pic=`${process.env.BACKEND_URL}/accessFile/${filename}`;
+            user.profile_pic=profile_pic;
         }
         if(name){
             user.name=name;
@@ -111,4 +113,27 @@ const Logout=async(req,res,next)=>{
     }
 }
 
-module.exports={AddUser,login,updateProfile,getUser,Logout,updateUser}
+const getUserImage=async(req,res,next)=>{
+    try{
+        let {_id,profile_pic}=req.params;
+        let url=`${process.env.BACKEND_URL}/user${req.url}`;
+        let ind=url.lastIndexOf("?")
+        url=url.substring(0,ind)
+        console.log(url)
+        var query={_id,profile_pic:url}
+        let folder=await userModel.findOne(query)
+        var filename="user_files/!pka!95tw@.png"
+        if(!folder){
+          return res.sendFile(`${root_dir}/Files/${filename}`)
+        }
+        else{
+          return res.sendFile(`${root_dir}/Files/user_images/${profile_pic}`)
+        }
+    }
+  catch(e){
+    console.log(e)
+     return res.sendFile(`${root_dir}/Files/user_files/!pka!95tw@.png`)
+  }
+}
+
+module.exports={AddUser,login,updateProfile,getUser,Logout,updateUser,getUserImage}
