@@ -34,9 +34,7 @@ userModel.methods.encryptPassword=function(){
 }
 
 userModel.methods.getToken=function(){
-    let token= jwt.sign({id:this._id},process.env.SECRET_KEY,{
-        expiresIn : process.env.JWT_EXPIRE 
-    })
+    let token= jwt.sign({id:this._id},process.env.SECRET_KEY)
     this.access_token=token;
     return token;
 }

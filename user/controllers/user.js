@@ -1,5 +1,6 @@
 const userModel=require("../model/user")
 const path=require("path")
+const { removeSession,saveIp } = require("../../middleware/IP")
 const root_dir=path.dirname(path.dirname(__dirname))
 const removeFile=require(`${root_dir}/middleware/removeFile`)
 const AddUser=async(req,res,next)=>{
@@ -11,7 +12,8 @@ const AddUser=async(req,res,next)=>{
         let user=await userModel({emailid,name,password})
         user.encryptPassword();
         let token=user.getToken()
-        await user.save()
+        let t=await user.save()
+        t=await saveIp(req,user._id)
         return res.status(200).cookie("token",token,{maxAge:24*60*60*1000}).json({status:true,token});
     }
     catch(e){
@@ -22,6 +24,7 @@ const AddUser=async(req,res,next)=>{
 
 const login=async(req,res,next)=>{
     try{
+        
         let {emailid,password}=req.body;
         let user=await userModel.findOne({emailid})
         if(!user){
@@ -31,7 +34,8 @@ const login=async(req,res,next)=>{
             return res.status(401).json({status:false,error:"Invalid User"})
         }
         let token=user.getToken()
-        await user.save()
+        let t=await user.save()
+        t=await saveIp(req,user._id)
         return res.status(200).cookie("token",token,{maxAge:24*60*60*1000}).json({status:true,token});
     }
     catch(e){
@@ -45,11 +49,8 @@ const updateProfile=async(req,res,next)=>{
         let {_id}=req.params;
         let {filename}=req.body;
         let user=await userModel.findById(_id)
-        if(String(user.profile_pic).startsWith(process.env.BACKEND_URL)){
-            let fd=String(user.profile_pic).split("/")
-            removeFile(`user_images/${fd[fd.length-1]}`)
-        }
-        user.profile_pic=`${process.env.BACKEND_URL}/user/accessFile/${filename}`;
+        removeFile(`user_images/${user.profile_pic}`)
+        user.profile_pic=`${filename}`;
         await user.save()
         return res.status(200).json({status:true})
     }
@@ -65,11 +66,7 @@ const updateUser=async(req,res,next)=>{
         let {profile_pic,name}=req.body;
         let user=await userModel.findById(_id)
         if(profile_pic){
-
-            if(String(user.profile_pic).startsWith(process.env.BACKEND_URL)){
-                let fd=String(user.profile_pic).split("/")
-                removeFile(`user_images/${fd[fd.length-1]}`)
-            }
+            removeFile(`user_images/${user.profile_pic}`)
             user.profile_pic=profile_pic;
         }
         if(name){
@@ -106,6 +103,7 @@ const Logout=async(req,res,next)=>{
         user.access_token=""
         await user.save()
         res.clearCookie("token");
+        let t=await removeSession(req)
         return res.status(200).json({status:true})
     }
     catch(e){
@@ -115,19 +113,14 @@ const Logout=async(req,res,next)=>{
 
 const getUserImage=async(req,res,next)=>{
     try{
-        let {_id,profile_pic}=req.params;
-        let url=`${process.env.BACKEND_URL}/user${req.url}`;
-        let ind=url.lastIndexOf("?")
-        url=url.substring(0,ind)
-        console.log(url)
-        var query={_id,profile_pic:url}
-        let folder=await userModel.findOne(query)
+        let {_id}=req.params;
+        let folder=await userModel.findById(_id)
         var filename="user_files/!pka!95tw@.png"
         if(!folder){
           return res.sendFile(`${root_dir}/Files/${filename}`)
         }
         else{
-          return res.sendFile(`${root_dir}/Files/user_images/${profile_pic}`)
+          return res.sendFile(`${root_dir}/Files/user_images/${folder.profile_pic}`)
         }
     }
   catch(e){

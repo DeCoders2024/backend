@@ -41,9 +41,10 @@ const folderModel=new mongoose.Schema({
             type:Boolean,
             default:false
         },
-        access_people:{
-            type:Array,
-            deafult:[]
+        space:{
+            type:String,
+            require:true,
+            default:0
         }
 })
 

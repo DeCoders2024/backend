@@ -5,6 +5,10 @@ const root_dir=path.dirname(path.dirname(__dirname))
 const userModel=require(`${root_dir}/user/model/user`)
 const error=require(`${root_dir}/middleware/throwError`)
 const removeFile=require(`${root_dir}/middleware/removeFile`)
+const sessionModel=require("../../user/model/session")
+const accessModel=require("../model/access")
+const requestIp=require("request-ip")
+const jwt=require("jsonwebtoken")
 const createFolder=async(req,res,next)=>{
     try{
         let {_id}=req.params;
@@ -27,7 +31,7 @@ const createFolder=async(req,res,next)=>{
             length:10,
             includeSymbols:['@','$','!','^','&']
         })
-        let folder_access_link=`${process.env.BACKEND_URL}/${folder_server_name}`
+        let folder_access_link=`${folder_server_name}`
         folder=await folderModel({folder_name,folder_type,folder_parent,user_id:_id,folder_access_link,folder_server_name})
         await folder.save()
         return res.status(200).json({status:true,folder_id:folder._id})        
@@ -42,8 +46,6 @@ const addFile=async(req,res,next)=>{
     try{
         let {_id}=req.params;
         let {folder_parent,filename}=req.body;
-      console.log(folder_parent)
-      console.log(filename)
         if(folder_parent===undefined){
             folder_parent=null;
         }
@@ -54,6 +56,7 @@ const addFile=async(req,res,next)=>{
             }
         }
         let file_ids=[]
+        var total_size=0
         for(let i=0;i<filename.length;i++){
             let file=filename[i];
             var folder=await folderModel.findOne({folder_type:0,folder_parent,user_id:_id,folder_name:file.originalname});
@@ -62,13 +65,16 @@ const addFile=async(req,res,next)=>{
                     length:10,
                     includeSymbols:['@','$','!','^','&']
                 })
-                folder=await folderModel.create({folder_access_link:id,folder_type:0,folder_name:file.originalname,folder_server_name:file.filename,folder_extention:file.extention,user_id:_id,folder_parent})
-                }
+                let space=Math.round((file.size/(1024*1024))*100)/100;
+                folder=await folderModel.create({folder_access_link:id,folder_type:0,folder_name:file.originalname,folder_server_name:file.filename,folder_extention:file.extention,user_id:_id,folder_parent,space})
+                total_size+=space;    
+            }
             else{
                 removeFile(`user_files/${file.filename}`)
             }
             file_ids.push(folder._id)
         }
+        let t=await chageSpace(total_size,folder_parent)
         return res.status(200).json({status:true,file_ids})
     }
     catch(e){
@@ -76,7 +82,14 @@ const addFile=async(req,res,next)=>{
         error(res,500,"Invalid Parent Folder")   
     }
 }
-
+const chageSpace=async(space,folder_parent)=>{
+    while(folder_parent!==null){
+        let folder=await folderModel.findOne({_id:folder_parent})
+        folder.space=parseFloat(folder.space)+space;
+        let t=await folder.save()
+        folder_parent=folder.folder_parent;
+    }
+}
 const getAllFolders=async(req,res,next)=>{
     try{
         let {_id}=req.params;
@@ -98,11 +111,8 @@ const updateFolderLogo=async(req,res,next)=>{
             return res.status(401).json({"status":false,error:"Invalid Folder"})
         }
         else{
-            if(String(folder.folder_logo).startsWith(process.env.BACKEND_URL)){
-                let fd=String(folder.folder_logo).split("/")
-                removeFile(`user_images/${fd[fd.length-1]}`)
-            }
-            folder.folder_logo=`${process.env.BACKEND_URL}/accessFile/${filename}`;
+            removeFile(`user_images/${folder.folder_logo}`)
+            folder.folder_logo=`${filename}`;
         }
         await folder.save();
         return res.status(200).json({status:true})
@@ -130,6 +140,8 @@ const updateFolder=async(req,res,next)=>{
             return res.status(401).json({"status":false,error:"Parent Folder Not Exist"})
         }
           else if(folder_parent==null){
+            let t=await chageSpace(-parseFloat(folder.space),folder.folder_parent)
+            t=await chageSpace(parseFloat(folder.space),folder_parent)
             folder.folder_parent=folder_parent
           }
         else if(folder_parent && String(parent._id)===String(folder._id)){
@@ -148,6 +160,8 @@ const updateFolder=async(req,res,next)=>{
         if(!isDone){
             return error(res,400,"The Destination Folder Is Sub Folder of source folder")
         }}
+        let t=await chageSpace(-parseFloat(folder.space),folder.folder_parent)
+            t=await chageSpace(parseFloat(folder.space),folder_parent)
         folder.folder_parent=folder_parent;
           }
     }
@@ -159,13 +173,13 @@ const updateFolder=async(req,res,next)=>{
             folder.folder_name=folder_name
         }
         if(folder_logo || folder_logo===""){
-            if(String(folder.folder_logo).startsWith(process.env.BACKEND_URL)){
-                let fd=String(folder.folder_logo).split("/")
-                removeFile(`user_images/${fd[fd.length-1]}`)
-            }
+            removeFile(`user_images/${folder.folder_logo}`)
             folder.folder_logo=folder_logo;
         }
         if(access_all===true || access_all===false){
+            if(!access_all){
+                let access=await accessModel.deleteMany({owner:_id,folder_id:folder._id});
+            }
             folder.access_all=access_all;
         }
         await folder.save();
@@ -206,42 +220,48 @@ const isMoveable=async(node,parent_node,user_id)=>{
 const addPersonToAccess=async(req,res,next)=>{
     try{
         let {_id,folder_id}=req.params;
-        let {access_people}=req.body;
-        let folder=await folderModel.findOne({user_id:_id,_id:folder_id});
+        let {emailid}=req.query;
+        let user=await userModel.findOne({emailid});
+        
+        if(!user || user._id==_id){
+            return res.status(404).json({"status":false,error:"Email Id not exist or its your Email id"});
+        }
+        let folder=await folderModel.findOne({_id:folder_id,user_id:_id});
         if(!folder){
-            return error(res,401,"Inavlid Folder")
+            return res.status(401).json({status:false,error:"Invalid User"})
+        }
+        let access=await accessModel.findOne({folder_id,access_by:emailid,owner:_id});
+        if(access){
+            return res.status(400).json({status:false,error:"Person Already Have Folder Access"})
+        }
+        access=await accessModel.create({folder_id,access_by:emailid,owner:_id});
+        return res.status(200).json({status:true,access_id:access._id,emailid})
+    }
+    catch(e){
+        console.log("error",e)
+        error(res,500,"Server Error....")
+    }
+}
+
+const removeAccess=async(req,res,next)=>{
+    try{
+        let {_id,access_id}=req.params;
+        let user=await userModel.findById(_id)
+        let obj={}
+        if(req.query.state){
+            obj['access_by']=user.emailid
+            obj['folder_id']=access_id
         }
         else{
-            var invalid=[]
-            var valid=[]
-            var peoples=folder.access_people;
-            var available={}
-            for(let i=0;i<peoples.length;i++){
-                available[peoples[i]._id]=i;
-            }
-            for(let i=0;i<access_people.length;i++){
-                let people=access_people[i];
-                people=await userModel.findOne({emailid:people.emailid});
-                if(!people){
-                    invalid.push(access_people[i]);
-                }
-                else if(people._id==_id){
-                    continue;
-                }
-                else{
-                    if(available[people._id]){
-                        peoples[available[people._id]]['type']=access_people[i].type
-                    }
-                    else{
-                        peoples.push({_id:people._id,access:access_people[i].type});
-                    }
-                    valid.push(access_people[i]);
-                }
-            }
-            folder.access_people=peoples;
+            obj['owner']=_id
+            obj['_id']=access_id
         }
-        await folder.save();
-        return res.status(200).json({status:true,valid,invalid});
+        let access=await accessModel.findOne(obj)
+        if(!access){
+            return res.status(401).json({'status':false,error:"Invalid User"})
+        }
+        access=await accessModel.deleteOne({_id:access._id});
+        return res.status(200).json({status:true});
     }
     catch(e){
         console.log(e)
@@ -249,31 +269,15 @@ const addPersonToAccess=async(req,res,next)=>{
     }
 }
 
-const removeAccess=async(req,res,next)=>{
+const getAccess=async(req,res,next)=>{
     try{
         let {_id,folder_id}=req.params;
-        let {people_emailid}=req.body;
-        let folder=await folderModel.findOne({user_id:_id,_id:folder_id});
+        let folder=await folderModel.findOne({user_id:_id,_id:folder_id})
         if(!folder){
-            return error(res,401,"Inavlid Folder")
+            return res.status(401).json({status:false,error:"Invalid User"})
         }
-        else{
-            let people=await userModel.findOne({emailid:people_emailid});
-            if(!people){
-                return res.status(400).json({status:false,error:"Invalid Email Id"})
-            }
-            var peoples=folder.access_people;
-            for(let i=0;i<peoples.length;i++){
-                if(String(peoples[i]._id)==String(people._id)){
-                    peoples[i]=peoples[peoples.length-1];
-                    peoples.pop()
-                    break;
-                }
-            }
-            folder.access_people=peoples;
-        }
-        await folder.save();
-        return res.status(200).json({status:true});
+        let access=await accessModel.find({owner:_id,folder_id:folder_id})
+        return res.status(200).json({status:true,data:access});
     }
     catch(e){
         console.log(e)
@@ -326,18 +330,95 @@ const findUsingPath=async(req,res,next)=>{
     }
 }
 
+const findaccessUsingPath=async(req,res,next)=>{
+    var dirs=[{"folder_name":"root:",_id:null}]
+  try{
+      let dir_path=req.query.path;
+      let folder_id=req.query.id
+      let {_id}=req.params;
+      let user=await userModel.findById(_id);
+      dir_path=String(dir_path).split("/")
+      if(dir_path.length===0 || dir_path[0]!=="root:"){
+          return res.status(400).json({"status":false,error:"Invalid Directory Path",dirs})
+      }
+      else{
+          var folder_parent=null;
+          for(let i=1;i<dir_path.length;i++){
+              let folder_name=dir_path[i];
+              if(folder_name===""){
+                  continue;
+              }
+              else{
+                if(i==1){
+                    let access=await accessModel.findOne({folder_id:folder_id,access_by:user.emailid});
+                    if(!access){
+                        return res.status(401).json({"sttaus":false,"error":"Invalid User"})
+                    }
+                    _id=access.owner
+                    let folder=await folderModel.findById(folder_id)
+                    if(!folder){
+                        return res.status(401).json({"sttaus":false,"error":"Invalid User"})
+                    }
+                    folder_parent=folder.folder_parent
+                  }
+                  let folder=await folderModel.findOne({folder_name,user_id:_id})
+                  if(!folder){
+                      let folders=await folderModel.find({folder_parent,user_id:_id});
+                      return res.status(400).json({status:false,error:"Invalid Directory Enter",dirs,folders})
+                  }
+                  
+                  if(folder.folder_type===0){
+                      if(i===dir_path.length-1){
+                          return res.status(200).json({status:true,folders:[folder],dirs})
+                      }
+                      else{
+                        let folders=await folderModel.find({folder_parent,user_id:_id});
+                          return res.status(400).json({status:false,error:"Invalid Directory Enter",dirs,folders})
+                      }
+                  }
+                  folder_parent=folder._id;
+                  dirs.push({folder_name,_id:folder._id})
+              }
+          }
+      }
+      if(!folder_parent){
+            let folderaccess=await accessModel.find({access_by:user.emailid});
+            // console.log(folderaccess)
+            let folders=[]
+            for(let val of folderaccess){
+                let folder=await folderModel.findById(val.folder_id);
+                if(folder){
+                    folders.push(folder)
+                }
+            }
+            return res.status(200).json({status:true,folders,dirs});
+      }
+      else{
+          let folders=await folderModel.find({folder_parent,user_id:_id});
+          return res.status(200).json({status:true,folders,dirs})
+    }
+  }
+  catch(e){
+      console.log(e)
+      return res.status(500).json({status:false,error:"Server Error...",dirs})
+  }
+}
+
 const deleteFolder=async(req,res,next)=>{
     try{
         let {_id,folder_id}=req.params;
         let folder=await folderModel.findOne({user_id:_id,_id:folder_id})
+        
         if(!folder){
             return error(res,404,"Invalid Folder")
         }
+        let t=await chageSpace(-parseFloat(folder.space),folder.folder_parent)
         var folders=[folder]
         var folder_delete=[]
         while(folders.length!==0){
             let folder=folders[folders.length-1]
             let res=await folderModel.deleteOne({_id:folder._id})
+            let access=await accessModel.deleteMany({owner:_id,folder_id:folder._id});
             if(folder.folder_type==0){
                 removeFile(`user_files/${folder.folder_server_name}`);
             }
@@ -358,47 +439,132 @@ const deleteFolder=async(req,res,next)=>{
 
 const getLogo=async(req,res,next)=>{
     try{
-        let {_id,folder_access_url}=req.params;
-        let url=`${process.env.BACKEND_URL}${req.url}`;
-        let ind=url.lastIndexOf("?")
-        url=url.substring(0,ind)
-        var query={user_id:_id,folder_logo:url}
-
+        let {_id,folder_logo}=req.params;
+        var query={folder_logo}
         let folder=await folderModel.findOne(query)
-        var filename="user_files/!pka!95tw@.png"
-        if(!folder){
-          return res.sendFile(`${root_dir}/Files/${filename}`)
+        let user=await userModel.findById(_id)
+        let access=await accessModel.findOne({folder_id:folder._id,access_by:user.emailid});
+        var filename="folderLogo.png"
+        if((access || folder.user_id==_id)){
+            filename=folder.folder_logo;
         }
-        else{
-          return res.sendFile(`${root_dir}/Files/user_images/${folder_access_url}`)
-        }
+          return res.sendFile(`${root_dir}/Files/user_images/${filename}`)
     }
   catch(e){
     console.log(e)
-     return res.sendFile(`${root_dir}/Files/user_files/!pka!95tw@.png`)
+     return res.sendFile(`${root_dir}/Files/user_images/folderLogo.png`)
   }
 }
 
 const getFolder=async(req,res,next)=>{
     try{
-        let {_id,folder_access_url}=req.params;
-        
-        var query={user_id:_id,folder_access_link:folder_access_url}
-
+        let {_id,folder_access_link}=req.params;
+        var query={folder_access_link}
         let folder=await folderModel.findOne(query)
-        var filename="user_files/!pka!95tw@.png"
-        // console.log(folder)
-        if(!folder){
-          return res.sendFile(`${root_dir}/Files/${filename}`)
+        let user=await userModel.findById(_id)
+        let access=await accessModel.findOne({folder_id:folder._id,access_by:user.emailid});
+        var filename="user_images/folderLogo.png"
+        if((access || folder.user_id==_id)){
+          return res.sendFile(`${root_dir}/Files/user_files/${folder.folder_server_name}`)
         }
         else{
-          return res.download(`${root_dir}/Files/user_files/${folder.folder_server_name}`)
+          return res.status(401).json({status:false.valueOf,error:"You don't have access"})
         }
     }
   catch(e){
     console.log(e)
-     return res.sendFile(`${root_dir}/Files/user_files/!pka!95tw@.png`)
+     return res.sendFile(`${root_dir}/Files/user_images/folderLogo.png`)
   }
 }
 
-module.exports={getLogo,getFolder,createFolder,getAllFolders,addFile,findUsingPath,updateFolder,updateFolderLogo,addPersonToAccess,removeAccess,deleteFolder}
+const addAccessByLink=async(req,res,next)=>{
+    try{
+        let {folder_type,folder_access_link}=req.params;
+        let folder=await folderModel.findOne({folder_access_link});
+        // console.log(folder)
+        if(!folder){
+            return res.status(401).json({status:false,error:"Invalid Folder Access Link"})
+        }
+        let user_ip=requestIp.getClientIp(req);
+        let session=await sessionModel.findOne({user_ip});
+        if(!session){
+            if(folder.folder_type==0 && folder.access_all){
+                return res.sendFile(`${root_dir}/Files/user_files/${folder.folder_server_name}`)
+            }
+            else{
+                return res.redirect(`${process.env.FRONT_END_URL}/login`)
+            }
+        }
+        let user_id=session.user_id;
+        let user=await userModel.findById(user_id)
+        if(!user){
+            if(folder.folder_type==0 && folder.access_all){
+                return res.sendFile(`${root_dir}/Files/user_files/${folder.folder_server_name}`)
+            }
+            else{
+                return res.redirect(`${process.env.FRONT_END_URL}/login`)
+            }
+        }
+        let token=user.access_token;
+        // console.log(token)
+        try{
+            if(jwt.decode(token,process.env.SECRET_KEY)){
+                let access=await accessModel.findOne({folder_id:folder._id,access_by:user.emailid});
+                console.log(String(user._id)===String(folder.user_id))
+                if(folder.access_all && !access){
+                    access=await accessModel.create({folder_id:folder._id,access_by:user.emailid,owner:folder.user_id});
+                }
+                if(access || String(user._id)===String(folder.user_id)){
+                        if(folder.folder_type==0){
+                            return res.sendFile(`${root_dir}/Files/user_files/${folder.folder_server_name}`)
+                        }
+                    
+                        else{
+                            return res.redirect(process.env.FRONT_END_URL)
+                        }
+                }
+                return res.status(401).json({status:false,error:"Invalid Folder Access Link"})
+            }
+            else{
+                if(folder.folder_type==0 && folder.access_all){
+                    return res.sendFile(`${root_dir}/Files/user_files/${folder.folder_server_name}`)
+                }
+                else{
+                    return res.redirect(`${process.env.FRONT_END_URL}/login`)
+                }
+            }
+        }
+        catch(e){
+            console.log(e)
+            if(folder.folder_type==0 && folder.access_all){
+                return res.sendFile(`${root_dir}/Files/user_files/${folder.folder_server_name}`)
+            }
+            else{
+                return res.redirect(`${process.env.FRONT_END_URL}/login`) 
+            }
+        }
+        // let user=await userModel.findById(_id);
+    
+        
+    }
+    catch(e){
+        console.log("error",e)
+        error(res,500,"Server Error....")
+    }
+}
+
+const getRootSpace=async(req,res,next)=>{
+    try{
+        let {_id}=req.params;
+        let folders=await folderModel.find({user_id:_id,folder_parent:null})
+        let total_size=0
+        for(let val of folders){
+            total_size+=parseFloat(val.space)
+        }
+        return res.status(200).json({status:true,space:total_size})
+    }
+    catch(e){
+        return res.status(500).json({status:false,space:0})
+    }
+}
+module.exports={getLogo,getAccess,addAccessByLink,findaccessUsingPath,getFolder,createFolder,getAllFolders,addFile,findUsingPath,updateFolder,updateFolderLogo,addPersonToAccess,removeAccess,deleteFolder,getRootSpace}

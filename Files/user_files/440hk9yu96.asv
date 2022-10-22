@@ -1,0 +1,7 @@
+% perform arithmetic operations on two images
+
+img_1=imread('C:\\tut\\img_1.jpg');
+
+img_2=imread('C:\\tut\\img_2.png');
+
+% Addition 

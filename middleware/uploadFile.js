@@ -13,7 +13,8 @@ const UploadFile=(file_path,filepath,isMultiple)=>{
                     length:10,
                     includeSymbols:['@','$','!','&']
                 })
-            path(null,(id+"."+file.originalname.split('.')[1]));}
+                let ar=file.originalname.split('.')
+            path(null,(id+"."+ar[ar.length-1]));}
     })
 
 const upload=multer({storage:des});
@@ -33,7 +34,8 @@ const setName=(isMultiple=false)=>{
     return (
         async(req,res,next)=>{
         if(isMultiple){
-            let filenames=req.files.map((item)=>{return {filename:item.filename,originalname:item.originalname,extention:item.originalname.split('.')[1]}})
+           
+            let filenames=req.files.map((item)=>{  let a=item.originalname.split('.');return {filename:item.filename,originalname:item.originalname,extention:a[a.length-1],size:item.size}})
             req.body["filename"]=filenames
         }
         else{

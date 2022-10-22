@@ -3,10 +3,10 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const logger = require('morgan');
 const cors=require("cors")
-// const dotenv=require("dotenv")
+const dotenv=require("dotenv")
 const bodyparser = require('body-parser');
 const app = express();
-// dotenv.config({path:"./bin/config.env"})
+dotenv.config({path:"./.env"})
 const corsOptions = {
   //To allow requests from client
   origin: [

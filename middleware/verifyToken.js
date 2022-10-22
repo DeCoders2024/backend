@@ -1,23 +1,27 @@
 const jwt=require("jsonwebtoken")
 const userModel=require("../user/model/user") 
+const requestIp = require('request-ip');
+const sessionModel=require("../user/model/session")
 const verifyToken=async(req,res,next)=>{
     try{
         var {token}=req.headers;
-      // console.log(req)
-      console.log(req.body)
       if(!token){
-        var {token}=req.cookies;
+        token=req.cookies.token;
       }
       if(!token){
-        var {token}=req.body;
+        token=req.body.token;
       }
       if(!token){
-          var {tk}=req.query;
-        var token=tk;
+          token=req.query.tk;
       }
         let data=jwt.verify(token,process.env.SECRET_KEY);
         let user=await userModel.findById(data.id);
         if(user.compareToken(token)){
+            let ip=requestIp.getClientIp(req)
+            let session=await sessionModel.findOne({user_id:data.id,user_ip:ip});
+            if(!session){
+              return res.status(401).json({"status":false,"error":"Session Expired"});
+            }
             req.params['_id']=data.id;
             next();
         }
