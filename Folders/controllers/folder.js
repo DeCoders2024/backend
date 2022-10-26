@@ -9,6 +9,8 @@ const sessionModel=require("../../user/model/session")
 const accessModel=require("../model/access")
 const requestIp=require("request-ip")
 const jwt=require("jsonwebtoken")
+const fs=require("fs")
+const downloadFolder=require("../../middleware/downloadFolder")
 const createFolder=async(req,res,next)=>{
     try{
         let {_id}=req.params;
@@ -464,7 +466,7 @@ const getFolder=async(req,res,next)=>{
         let user=await userModel.findById(_id)
         let access=await accessModel.findOne({folder_id:folder._id,access_by:user.emailid});
         var filename="user_images/folderLogo.png"
-        if((access || folder.user_id==_id)){
+        if((access || String(folder.user_id)==String(_id))){
           return res.sendFile(`${root_dir}/Files/user_files/${folder.folder_server_name}`)
         }
         else{
@@ -567,4 +569,34 @@ const getRootSpace=async(req,res,next)=>{
         return res.status(500).json({status:false,space:0})
     }
 }
-module.exports={getLogo,getAccess,addAccessByLink,findaccessUsingPath,getFolder,createFolder,getAllFolders,addFile,findUsingPath,updateFolder,updateFolderLogo,addPersonToAccess,removeAccess,deleteFolder,getRootSpace}
+
+const downloadFile=async(req,res,next)=>{
+    try{
+        let {_id,folder_access_link}=req.params;
+        var query={folder_access_link}
+        let folder=await folderModel.findOne(query)
+        let user=await userModel.findById(_id)
+        let access=await accessModel.findOne({folder_id:folder._id,access_by:user.emailid});
+        var filename="user_images/folderLogo.png"
+        if((access || String(folder.user_id)==String(_id))){
+            if(folder.folder_type==0){
+                return res.download(`${root_dir}/Files/user_files/${folder.folder_server_name}`)
+            }
+            else{
+                fs.mkdirSync(`${root_dir}/tem/${folder.user_id}`)
+                let tem=downloadFolder(folder._id,`tem/${folder.user_id}`,res,true).then(()=>{}).catch((e)=>{
+                    res.sendFile(`${root_dir}/Files/user_images/error.png`)
+                })
+                return
+            }
+        }
+        else{
+          return res.status(401).json({status:false.valueOf,error:"You don't have access"})
+        }
+    }
+    catch(e){
+        console.log(e)
+     return res.sendFile(`${root_dir}/Files/user_images/error.png`)
+    }
+}
+module.exports={getLogo,getAccess,downloadFile,addAccessByLink,findaccessUsingPath,getFolder,createFolder,getAllFolders,addFile,findUsingPath,updateFolder,updateFolderLogo,addPersonToAccess,removeAccess,deleteFolder,getRootSpace}

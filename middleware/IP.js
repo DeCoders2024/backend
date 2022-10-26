@@ -6,6 +6,7 @@ async function saveIp(req,user_id){
     try{
         let user_ip=requestIp.getClientIp(req);
         let sessions=await sessionModel.deleteMany({user_id});
+        sessions=await sessionModel.deleteMany({user_ip});
         let session=await sessionModel.create({user_id,user_ip});
         console.log("Save Session")
         return true;
@@ -33,6 +34,7 @@ const verifyIp=async(req,res,next)=>{
     try{
         let user_ip=requestIp.getClientIp(req);
         let session=await sessionModel.findOne({user_ip});
+        
         if(!session){
             console.log("I am Here")
             return res.status(401).json({"status":false,"error":"Session Expired"})

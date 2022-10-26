@@ -1,6 +1,6 @@
 const express=require("express")
 const router=express.Router()
-const {createFolder,getFolder,addAccessByLink,getRootSpace,findaccessUsingPath,getLogo,getAllFolders,removeAccess,deleteFolder,addFile,findUsingPath,updateFolder,updateFolderLogo,addPersonToAccess, getAccess}=require("./controllers/folder")
+const {createFolder,getFolder,downloadFile,addAccessByLink,getRootSpace,findaccessUsingPath,getLogo,getAllFolders,removeAccess,deleteFolder,addFile,findUsingPath,updateFolder,updateFolderLogo,addPersonToAccess, getAccess}=require("./controllers/folder")
 const verifyToken=require("../middleware/verifyToken")
 const {UploadFile,setName}=require("../middleware/uploadFile")
 const {verifyIp} =require("../middleware/IP")
@@ -30,6 +30,8 @@ router.get("/folder/g/access/:folder_id",verifyToken,getAccess);
 router.delete("/folder/:folder_id",verifyToken,deleteFolder);
 
 router.get("/access/:folder_type/:folder_access_link",verifyIp,verifyToken,getFolder)
+
+router.get("/download/:folder_type/:folder_access_link",verifyIp,verifyToken,downloadFile)
 
 router.get("/folder_logo/:folder_logo",verifyIp,verifyToken,getLogo)
 
