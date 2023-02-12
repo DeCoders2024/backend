@@ -14,7 +14,7 @@ const AddUser=async(req,res,next)=>{
         let token=user.getToken()
         let t=await user.save()
         t=await saveIp(req,user._id)
-        return res.status(200).cookie("token",token,{maxAge:24*60*60*1000}).json({status:true,token});
+        return res.status(200).json({status:true,token});
     }
     catch(e){
         console.log(e)
@@ -36,7 +36,7 @@ const login=async(req,res,next)=>{
         let token=user.getToken()
         let t=await user.save()
         t=await saveIp(req,user._id)
-        return res.status(200).cookie("token",token,{maxAge:24*60*60*1000}).json({status:true,token});
+        return res.status(200).json({status:true,token});
     }
     catch(e){
         console.log(e)

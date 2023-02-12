@@ -25,10 +25,10 @@ app.use(cors())
 // Require App
 
 const user=require("./user/urls");
-const folder=require("./Folders/urls");
+const label=require("./Labels/urls");
 
 app.use("/user",user);
-app.use("/",folder);
+app.use("/",label);
 
 
 // catch 404 and forward to error handler
