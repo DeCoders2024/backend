@@ -16,7 +16,7 @@ const accessModel=new mongoose.Schema({
         isAccessAll:{
             type:Boolean,
             required:true,
-            default:false
+            default:true
         },
         access_add_date:{
             type:Date,

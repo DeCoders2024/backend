@@ -13,22 +13,6 @@ const labelModel=new mongoose.Schema({
             type:String,
             require:true
         },
-        label_parent:{
-            type:schema.Types.ObjectId,
-            default:null
-        },
-        label_content:{
-            type:String,
-            default:""
-        },
-        label_type:{
-            type:Number,
-            required:true,
-        },
-        label_logo:{
-            type:String,
-            default:""
-        },
         label_add_date:{
             type:Date,
             default:Date.now
@@ -39,7 +23,7 @@ const labelModel=new mongoose.Schema({
         },
         access_all:{
             type:Boolean,
-            default:false
+            default:true
         }
 })
 
